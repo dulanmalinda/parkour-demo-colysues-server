@@ -14,4 +14,5 @@ export class PlayerState extends Schema {
 
     @type("uint8") lastCheckpoint: number = 0;
     @type("uint8") skinId: number = 0;
+    @type("boolean") isReady: boolean = false;
 }

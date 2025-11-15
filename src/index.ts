@@ -1,4 +1,4 @@
-import { Server } from "@colyseus/core";
+import { Server, matchMaker } from "@colyseus/core";
 import { WebSocketTransport } from "@colyseus/ws-transport";
 import { createServer } from "http";
 import express from "express";
@@ -19,7 +19,34 @@ const gameServer = new Server({
     })
 });
 
-gameServer.define("parkour", ParkourRoom);
+gameServer.define("parkour", ParkourRoom)
+    .filterBy(['roomCode']);
+
+app.get("/api/find-room/:code", async (req, res) => {
+    try {
+        const roomCode = req.params.code.toUpperCase();
+        const rooms = await matchMaker.query({
+            name: "parkour",
+            private: false
+        });
+
+        const targetRoom = rooms.find((r: any) => r.metadata?.roomCode === roomCode);
+
+        if (targetRoom && targetRoom.clients < targetRoom.maxClients) {
+            res.json({
+                roomId: targetRoom.roomId,
+                players: targetRoom.clients,
+                maxPlayers: targetRoom.maxClients
+            });
+        } else if (targetRoom) {
+            res.status(400).json({ error: "Room is full" });
+        } else {
+            res.status(404).json({ error: "Room not found" });
+        }
+    } catch (error) {
+        res.status(500).json({ error: "Server error" });
+    }
+});
 
 gameServer.listen(port);
 

@@ -3,7 +3,7 @@ import { ParkourRoomState } from "../schema/ParkourRoomState";
 import { PlayerState } from "../schema/PlayerState";
 
 export class ParkourRoom extends Room<ParkourRoomState> {
-    maxClients = 8;
+    maxClients = 4;
     private readonly MIN_PLAYERS = 2;
     private readonly COUNTDOWN_SECONDS = 3;
     private countdownInterval?: NodeJS.Timeout;
@@ -21,12 +21,24 @@ export class ParkourRoom extends Room<ParkourRoomState> {
 
     private nextSpawnIndex = 0;
 
+    private generateRoomCode(): string {
+        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+        let code = '';
+        for (let i = 0; i < 4; i++) {
+            code += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        return code;
+    }
+
     onCreate(options: any) {
         this.setState(new ParkourRoomState());
+        this.state.roomCode = this.generateRoomCode();
         this.state.gameState = "waiting";
         this.setPatchRate(33);
 
-        console.log("ParkourRoom created with options:", options);
+        this.setMetadata({ roomCode: this.state.roomCode });
+
+        console.log(`ParkourRoom created with code: ${this.state.roomCode}`, options);
 
         this.onMessage("updatePosition", (client, message) => {
             const player = this.state.players.get(client.sessionId);
@@ -55,6 +67,15 @@ export class ParkourRoom extends Room<ParkourRoomState> {
                 console.log(`Player ${client.sessionId} selected skin ${message.skinId}`);
             }
         });
+
+        this.onMessage("playerReady", (client, message) => {
+            const player = this.state.players.get(client.sessionId);
+            if (player) {
+                player.isReady = message.isReady;
+                console.log(`Player ${client.sessionId} ready state: ${player.isReady}`);
+                this.checkReadyState();
+            }
+        });
     }
 
     onJoin(client: Client, options: any) {
@@ -77,7 +98,6 @@ export class ParkourRoom extends Room<ParkourRoomState> {
         this.state.players.set(client.sessionId, player);
 
         this.state.playerCount = this.state.players.size;
-        this.checkGameStart();
     }
 
     onLeave(client: Client, consented: boolean) {
@@ -86,9 +106,7 @@ export class ParkourRoom extends Room<ParkourRoomState> {
 
         this.state.playerCount = this.state.players.size;
 
-        if (this.state.gameState === "countdown" && this.state.playerCount < this.MIN_PLAYERS) {
-            this.cancelCountdown();
-        }
+        this.checkReadyState();
     }
 
     onDispose() {
@@ -98,9 +116,25 @@ export class ParkourRoom extends Room<ParkourRoomState> {
         console.log("ParkourRoom disposed");
     }
 
-    private checkGameStart() {
-        if (this.state.playerCount >= this.MIN_PLAYERS && this.state.gameState === "waiting") {
+    private checkReadyState() {
+        const playerCount = this.state.players.size;
+
+        if (playerCount < this.MIN_PLAYERS) {
+            if (this.state.gameState === "countdown") {
+                this.cancelCountdown();
+            }
+            return;
+        }
+
+        const allReady = Array.from(this.state.players.values())
+            .every(p => p.isReady);
+
+        if (allReady && this.state.gameState === "waiting") {
+            console.log("All players ready - starting countdown");
             this.startCountdown();
+        } else if (!allReady && this.state.gameState === "countdown") {
+            console.log("Not all players ready - cancelling countdown");
+            this.cancelCountdown();
         }
     }
 
