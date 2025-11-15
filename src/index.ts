@@ -48,8 +48,6 @@ app.get("/api/find-room/:code", async (req, res) => {
     }
 });
 
-httpServer.listen(port, "0.0.0.0", () => {
+gameServer.listen(port).then(() => {
     console.log(`Colyseus server listening on port ${port}`);
 });
-
-gameServer.listen(port);
